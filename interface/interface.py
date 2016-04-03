@@ -5,9 +5,11 @@ import random
 import re
 from collections import Counter
 import time
-
+import copy
+import json
 
 #### INITIALIZE #####
+random.seed(10)
 
 #Read config file
 config = ConfigParser.RawConfigParser()
@@ -70,20 +72,43 @@ def throwerror(errcode):
 
 
 
-
-
 def showboard(board):
-    #board is a numrows*numcols list
+    #board is a numrows*numcols list    
+    
+    print('   |  A |  B |  C |  D |  E |  F |  G |  H |  I |  J |  K |  L |  M |  N |  O |')
+    print('   ============================================================================')
+    
+    rownum = 1
     for row in board:
-        print('----------------------------------------------------------------------------')
-        print('|  ', end = '')
+        if rownum < 10:
+            print(' ', end = '')
+        print(str(rownum) + ' |  ', end = '')
+        rownum +=1
+        
         for col in row:
             print(col, end=' |  ')
         print('')
-    print('----------------------------------------------------------------------------')
+        print('   ----------------------------------------------------------------------------')
+    
+    #print('----------------------------------------------------------------------------')
+    
 
 def showall():
-    showboard(letterboard) #TODO: actually show overlaid boards
+    
+#    mixboard = copy.copy(letterboard)
+#    for i in xrange(numrows):
+#        for j in xrange(numcols):
+#            if letterboard[i][j] == '.':
+#                if lettermultiplier[i][j]>1:
+#                    mixboard[i][j] = str(lettermultiplier[i][j]) + 'l'
+#                elif wordmultiplier[i][j] > 1:
+#                    mixboard[i][j] = str(wordmultiplier[i][j]) + 'w'
+#                else:
+#                    mixboard[i][j] = ' .'
+#            else:
+#                mixboard[i][j] = ' ' + letterboard[i][j]
+#    
+    showboard(letterboard) 
     for player in [1,2]:
         print("Player" + str(player), end='')
         if activeplayer == player:
@@ -93,6 +118,27 @@ def showall():
         print(''.join(rack[player]))
         print('Score ' + str(score [player]))
         print('')
+
+def showallgameover():
+    showboard(letterboard) 
+    print('\nGAME OVER')
+    
+    for player in [1,2]:
+        print("Player" + str(player)+ ': ', end='')
+        if len(rack[player]) == 0:
+            print('-')
+        else:
+            print(''.join(rack[player]))
+        print('Score ' + str(score[player]), end = '')
+        if score[player] > score[3 - player]:
+            print(' WINS')
+        elif score[player] < score[3 - player]:
+            print(' LOSES')
+        else:
+            print('TIES')
+        
+        print('')
+
        
 def checkword(word):
     return word.upper() in wordlist
@@ -110,7 +156,7 @@ def drawtiles(k):
     tiles = [bag.pop(random.randrange(len(bag))) for _ in xrange(k)]
     return tiles
 
-def INVOKEprog(player, stringboard, thisrack, agentscore, opponentscore, secondstogo, errcode, moverequired):
+def INVOKEprog(player, stringboard, thisrack, agentscore, opponentscore, secondstogo, errcode, moverequired, endofgameflag):
     """
     moverequired = True 
         implies it is the agent's move to play and their clock is running. A response is expected.
@@ -118,10 +164,25 @@ def INVOKEprog(player, stringboard, thisrack, agentscore, opponentscore, seconds
         implies it is the opponent's turn to play. The message is sent to update the agent with the new drawn tiles.
     """
     print("Message to player", player)
-    datatosend=(stringboard, thisrack, agentscore, opponentscore, secondstogo, errcode, moverequired)
+    #dictdatatosend=(stringboard, thisrack, agentscore, opponentscore, secondstogo, errcode, moverequired, endofgameflag)
+    dictdatatosend={}
+    dictdatatosend['board'] = stringboard
+    dictdatatosend['rack'] = thisrack
+    dictdatatosend['score'] = {}
+    dictdatatosend['score']['me'] = agentscore
+    dictdatatosend['score']['opponent'] = opponentscore
+    dictdatatosend['secondstogo'] = secondstogo
+    dictdatatosend['errcode'] = errcode
+    dictdatatosend['status'] = {}
+    dictdatatosend['status']['moverequired'] = moverequired
+    dictdatatosend['status']['endofgame'] = endofgameflag
+    
+    #dictdatatosend = (stringboard, thisrack, agentscore, opponentscore, secondstogo, errcode, moverequired, endofgameflag)
+    
+    datatosend = json.dumps(dictdatatosend)
     
     if moverequired:
-        starttime = time.time()        
+        starttime = time.time()
         move = raw_input(str(datatosend)+'\n') #player  'player' 's setting
         endtime = time.time()
         timeconsumed = endtime - starttime
@@ -396,14 +457,17 @@ def scoremove(parsedmove):
     totalscore = 0
     mainwordscore = 0
     mainwordmultiplier = 1
-#    print(parsedword, actualword)
+
     for i in range(len(actualword)):
-        mainwordscore+=(tilepoints[actualword[i]] * lettermultiplier[r][c])
-        if parsedword[i] != '#':
-            hasperpendicularplay = False
+        if parsedword[i] == '#':
+            mainwordscore+=tilepoints[actualword[i]]
+        else:
+            mainwordscore+=(tilepoints[actualword[i]] * lettermultiplier[r][c])
+            mainwordmultiplier *= wordmultiplier[r][c]
+            
+            hasperpendicularplay = False #if there is one, we'll set this to true later.
             perpendicularwordscore = (tilepoints[actualword[i]] * lettermultiplier[r][c])
             perpendicularwordmultiplier = wordmultiplier[r][c]
-            mainwordmultiplier *= wordmultiplier[r][c]
 
             #calculate perpendicular word score
             if dirc == 'H':
@@ -430,22 +494,20 @@ def scoremove(parsedmove):
                     hasperpendicularplay = True
                     perpendicularwordscore += tilepoints[letterboard[r][ctemp]]
                     ctemp+=1
+            
+            perpendicularwordscore *= perpendicularwordmultiplier
+            if hasperpendicularplay:
+                totalscore += perpendicularwordscore
                 
         letterboard[r][c] = actualword[i] #BOARD UPDATED HERE                    
         if dirc == 'H':
             c+=1
         elif dirc =='V':
             r+=1
-            
-        
-               
-            perpendicularwordscore *= perpendicularwordmultiplier
-            if hasperpendicularplay:
-                totalscore += perpendicularwordscore
-            
 
     
     totalscore+=(mainwordscore*mainwordmultiplier)
+    
     
     tilesplayed = [p for p in parsedword if not p=='#']
     ntilesplayed = len(tilesplayed)
@@ -466,29 +528,28 @@ def getmove(player):
     errcode = 0
 
     while True:
-        (move, timeconsumed) = INVOKEprog(player, stringboard, rack[player], score[player], score[3-player], secondsremaining[player], errcode, True) #wait for response # for how long?
+        (move, timeconsumed) = INVOKEprog(player, stringboard, rack[player], score[player], score[3-player], secondsremaining[player], errcode, True, False) #wait for response # for how long?
         # See parsemove() for move format
         
         parsedmove, parseerror = parsemove(move)
-        if parsedmove[0]=='pass' or parsedmove[0]=='exch':
-            return (parsedmove[0], parsedmove[1], timeconsumed)
-        actualword = parsedmove[4] # but will be fixed when validity is checked
         if parseerror:
             errcode = 11
             throwerror(errcode)
-            
+            continue
+        
+        if parsedmove[0]=='pass' or parsedmove[0]=='exch':
+            return (parsedmove[0], parsedmove[1], timeconsumed)
+        actualword = parsedmove[4] # but will be fixed when validity is checked
+
+        # validatemove (on board)
+        actualword, valid = validatemove(parsedmove, rack[player])
+        if not valid:
+            errcode = 12
+            throwerror(errcode)
             continue
         else:
-            # validatemove (on board)
-            actualword, valid = validatemove(parsedmove, rack[player])
-            if not valid:
-                errcode = 12
-                throwerror(errcode)
-                continue
-            else:
-                errcode = 0
-                break
-    
+            errcode = 0
+            break
     return (parsedmove[0], parsedmove[1], parsedmove[2], parsedmove[3], actualword, timeconsumed)
     
 def fullmove(player, showboard=False):
@@ -509,20 +570,41 @@ def fullmove(player, showboard=False):
         score[player]+=movescore
         timeconsumed = parsedmove[5]
         
-        
-    secondsremaining[player] -= timeconsumed #TODO: processing for going over time
+    #tilesplayed = re.sub('[abcdefghijklmnopqrstuvwxyz]', '?', tilesplayed)
+    tilesplayed = [x if not x in list('abcdefghijklmnopqrstuvwxyz') else '?' for x in tilesplayed]
+    secondsremaining[player] -= timeconsumed
         
     #return updated board, score, new rack, new time
     stringboard = ''.join([''.join(row) for row in letterboard])
     leftonrack = list(Counter(rack[player]) - Counter(tilesplayed))
     ntilestodraw = min(len(tilesplayed), len(bag))
+    #print(' >> '+ str(tilesplayed) + '>>' + str(leftonrack) + ' >> '+ str(ntilestodraw))
+    
     if ntilestodraw == 0:
-        return True
+        #TODO: This is the case where ntilestodraw == 0 signifies end of game. What if it is a pass move?
+        rack[player] = leftonrack 
+        if len(rack[player]) == 0: 
+            # game over
+            rackbonus = 2 * sum([tilepoints[x] for x in rack[3 - player]])
+            score[player]+=rackbonus
+            #timebonus            
+            if secondsremaining[3 - player] < 0:
+                minutesovertime = -(floor(secondsremaining[3 - player] / 60))
+                score[player] += (int(minutesovertime) * 10)
+                
+            if secondsremaining[player] < 0:
+                minutesovertime = -(floor(secondsremaining[player] / 60))
+                score[3 - player] += (int(minutesovertime) * 10)
+        
+            INVOKEprog(player, stringboard, rack[player], score[player], score[3 - player], secondsremaining[player], 0, False, True)
+            INVOKEprog(3 - player, stringboard, rack[3 - player], score[3 - player], score[player], secondsremaining[3 - player], 0, False, True)
+        
+            return True 
     else:
         rack[player] = leftonrack + drawtiles(ntilestodraw)
-        INVOKEprog(player, stringboard, rack[player], score[player], score[3 - player], secondsremaining[player], 0, False)
+        INVOKEprog(player, stringboard, rack[player], score[player], score[3 - player], secondsremaining[player], 0, False, False)
         if parsedmove[0] == 'exch':
-            bag = bag + tilesplayed ##TODO: PROBLEM!
+            bag = bag + tilesplayed ##TODO: Draw before adding back
         return False
     
 
@@ -538,24 +620,11 @@ while not gameover:
     
     activeplayer = 3 - activeplayer
 
-showall()
-#Send end of game message to both agents 
+print('')
+showallgameover()
 
 
 ##### TESTING ######
-
-#letterboard[7][5:9] = list('MOON')
-#rack[startplayer] = list('EHORYW?')#
-#rack[3 - startplayer] = drawtiles(7)
-#
-#showall()
-#fullmove(activeplayer)
-#showall()
-
-
-
-
-
 
 
 #TODO: check for exchange condition
