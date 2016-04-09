@@ -236,7 +236,7 @@ totalmoves = 0
 for i in range(numrows):
 #    print(hpossiblemoves[i])
     totalmoves+=len(hpossiblemoves[i][1]) + len(vpossiblemoves[i][1])
-    print(i,len(hpossiblemoves[i][1]), len(vpossiblemoves[i][1]))
+    print(i,hpossiblemoves[i][1], vpossiblemoves[i][1])
     
 print('Total possible moves: ', totalmoves)
 
