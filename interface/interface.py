@@ -446,7 +446,7 @@ def validatemove(parsedmove,rack):
      
      
 def scoremove(parsedmove):
-    
+    print("PPPPPPPPP>", parsedmove)
     r = parsedmove[0]
     c = parsedmove[1]
     dirc = parsedmove[2]
