@@ -5,7 +5,6 @@ import random
 import re
 from collections import Counter
 import time
-import copy
 import json
 
 #### INITIALIZE #####
@@ -353,7 +352,7 @@ def validatemove(parsedmove,rack):
     if Counter(blankedmove) - Counter(rack):
         errcode = 41
         throwerror(errcode)
-        return (None, False)
+        return (None, False, errcode)
     
     #2, 3
     r = parsedmove[0]
@@ -367,7 +366,7 @@ def validatemove(parsedmove,rack):
             valid = False
             errcode = 43
             throwerror(errcode)
-            return (None, False)
+            return (None, False, errcode)
             
         if (actualword[i] != '#' and letterboard[r][c] == '.') or (actualword[i] == letterboard[r][c]) or (actualword[i]=='#' and letterboard[r][c]!='.'):
             if actualword[i]=='#':
@@ -380,7 +379,7 @@ def validatemove(parsedmove,rack):
             valid = False
             errcode = 42
             throwerror(errcode)
-            return (None, False)
+            return (None, False, errcode)
     
     
     #4
@@ -388,7 +387,7 @@ def validatemove(parsedmove,rack):
             valid = False
             errcode = 44
             throwerror(errcode)
-            return (None, False)
+            return (None, False, errcode)
 
     r = parsedmove[0]
     c = parsedmove[1]
@@ -423,7 +422,7 @@ def validatemove(parsedmove,rack):
             valid = False
             errcode = 44
             throwerror(errcode)
-            return (None, False)
+            return (None, False, errcode)
     #5
     if not(r >= numrows or c >= numcols or letterboard[r][c]=='.') or \
     (dirc == 'H' and parsedmove[1]>0 and not letterboard[parsedmove[0]][parsedmove[1]-1]=='.') or \
@@ -432,21 +431,20 @@ def validatemove(parsedmove,rack):
         valid = False
         errcode = 46
         throwerror(errcode)
-        return (None, False)
+        return (None, False, errcode)
    
     #6
     if not centresquarecovered and all([char == '.' for char in ''.join([''.join(row) for row in letterboard])]):
         valid = False
         errcode = 45
         throwerror(errcode)
-        return (None, False)
+        return (None, False, errcode)
     
-    return (actualword, valid)
+    return(actualword, valid, None)
         
      
      
 def scoremove(parsedmove):
-    
     r = parsedmove[0]
     c = parsedmove[1]
     dirc = parsedmove[2]
@@ -542,9 +540,8 @@ def getmove(player):
         actualword = parsedmove[4] # but will be fixed when validity is checked
 
         # validatemove (on board)
-        actualword, valid = validatemove(parsedmove, rack[player])
+        actualword, valid, errcode = validatemove(parsedmove, rack[player])
         if not valid:
-            errcode = 12
             throwerror(errcode)
             continue
         else:
