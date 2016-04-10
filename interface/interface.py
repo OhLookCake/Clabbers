@@ -254,7 +254,7 @@ def parsemove(move):
     if loc.lower() == 'exch':
         if word is not None and word != '' and all([char in string.ascii_letters for char in word]):
             #TODO: Still need to validate if the letters are from the rack
-            return ('exch', word.upper())
+            return (('exch', word.upper()), False)
         else:
             parseerror = True
     
@@ -557,15 +557,20 @@ def fullmove(player, showboard=False):
         movescore = 0 
         tilesplayed = []
         timeconsumed = parsedmove[2]
+        #Update gcg file here
+        
     elif parsedmove[0] == 'exch':
         movescore = 0 
         tilesplayed = parsedmove[1]
         timeconsumed = parsedmove[2]
+        #Update gcg file here
+        
     else:
         #Update Board, score move, update time
         movescore, tilesplayed = scoremove(parsedmove)
         score[player]+=movescore
         timeconsumed = parsedmove[5]
+        #Update gcg file here
         
     #tilesplayed = re.sub('[abcdefghijklmnopqrstuvwxyz]', '?', tilesplayed)
     tilesplayed = [x if not x in list('abcdefghijklmnopqrstuvwxyz') else '?' for x in tilesplayed]
@@ -604,6 +609,7 @@ def fullmove(player, showboard=False):
             bag = bag + tilesplayed ##TODO: Draw before adding back
         return False
     
+    
 
 ##### PROCESS ######
 
@@ -612,7 +618,7 @@ rack[3 - startplayer] = drawtiles(7)
 
 gameover = False
 while not gameover:
-    showall()
+    #showall()
     gameover = fullmove(activeplayer)
     
     activeplayer = 3 - activeplayer
