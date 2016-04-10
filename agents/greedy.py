@@ -1,7 +1,7 @@
 from __future__ import print_function
 import ConfigParser
 from collections import Counter
-
+import pickle
 import re
 
 dictfile = '../csw12.txt'
@@ -17,6 +17,9 @@ for i in range(2,16):
     
 fh.close()
 hashedwordlist = ['#'*14 + w + '#'*14 for w in wordlist]
+#hashedwordstring = ('#'*14) + reduce(lambda x, y: x + ('#'*14) + y, wordlist) + ('#'*14)
+readhashedwordstring = pickle.load(open("../preprocess/hashedwordstring.p", "rb"))
+
 AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 board_anchorpoints = [[False]*15]*15
@@ -146,6 +149,7 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
         return []
     
     regstring = ""
+    
     for i in range(15):
         if row[i]!='.':
             regstring+='[' + row[i] + '#]'
@@ -154,90 +158,110 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
     
     regstring = '#' + regstring + '#'
     
-    checker = re.compile(r'(?=(' + regstring + '))')
-
-    results = []
     
-    for w in hashedwordlist:
-        found = checker.finditer(w)
-        
-        for match in found:
-            w = match.group(1)
-            w= w[1:-1]
-            start = len(re.search('^#*',w).group(0))
-            end = 14 - len(re.search('#*$',w).group(0))
-            
-            rightbit = ""
-            x = end + 1
-            while x < 15 and row[x] != '.':
-                rightbit = rightbit + row[x]
-                x+=1
-            leftbit =""
-            x = start - 1
-            while x >= 0 and row[x] != '.':
-                leftbit = row[x] + leftbit
-                x-=1
-                
-            actualword = leftbit + w[start:end+1] + rightbit
-            
-            if not actualword in lwordlists[len(actualword)]: # the effective word is not a word
-                continue
-            
-            if not max([a!='#' and b for a,b in zip(w,anchorpoints)]): # does not touch any anchor point
-                continue
-            
-            lettersadded = [w[i] for i in range(len(w)) if w[i]!='#' and row[i]=='.']
-            diffneededtoavailable =  Counter(lettersadded) - Counter(actualrack)       
-            numblanks = sum([i=='?' for i in actualrack])
-            if len(diffneededtoavailable) > numblanks:
-                continue
-            
-            anno_col = start - len(leftbit)
-            anno_word = ""
-            ctr = 0
-            for letter in actualword:
-                pos = start - len(leftbit) + ctr
-                if row[pos]=='.':
-                    anno_word = anno_word + actualword[ctr]
-                else:
-                    anno_word = anno_word + '(' + actualword[ctr] + ')'
-                ctr+=1
-            
-            #TODO: Optional:
-            anno_word = re.sub('\)\(', '', anno_word)
+    rejectioncounter = [0,0,0]
+    results = []
 
-            results+=[(anno_col,anno_word,''.join(lettersadded))]
+
+    checker = re.compile(r'(?=(' + regstring + '))')
+#    print(regstring)
+
+    found = checker.finditer(readhashedwordstring)
+        
+    for match in found:
+        w = match.group(1)
+        w= w[1:-1]
+        start = len(re.search('^#*',w).group(0))
+        end = 14 - len(re.search('#*$',w).group(0))
+        
+        leftbit =""
+        x = start - 1
+        while x >= 0 and row[x] != '.':
+            leftbit = row[x] + leftbit
+            x-=1
+            
+        rightbit = ""
+        x = end + 1
+        while x < 15 and row[x] != '.':
+            rightbit = rightbit + row[x]
+            x+=1
+            
+        actualword = leftbit + w[start:end+1] + rightbit
+        
+        if not actualword in lwordlists[len(actualword)]: # the effective word is not a word
+            rejectioncounter[0]+=1
+            continue
+        
+        if not max([a!='#' and b for a,b in zip(w,anchorpoints)]): # does not touch any anchor point
+            rejectioncounter[1]+=1
+            continue
+        
+        lettersadded = [w[i] for i in range(len(w)) if w[i]!='#' and row[i]=='.']
+        diffneededtoavailable =  Counter(lettersadded) - Counter(actualrack)       
+        numblanks = sum([i=='?' for i in actualrack])
+        if len(diffneededtoavailable) > numblanks:
+            rejectioncounter[2]+=1
+            continue
+        
+        anno_col = start - len(leftbit)
+        anno_word = ""
+        ctr = 0
+        for letter in actualword:
+            pos = start - len(leftbit) + ctr
+            if row[pos]=='.':
+                anno_word = anno_word + actualword[ctr]
+            else:
+                anno_word = anno_word + '(' + actualword[ctr] + ')'
+            ctr+=1
+        
+        #TODO: Optional:
+        hashword = re.sub('\(.\)', '#', anno_word)
+        letterword = actualword
+        
+        
+        results+=[(anno_col,hashword,letterword,''.join(lettersadded))]
+
+#    print(rejectioncounter)       
     return list(set(results))
 
-def genAllWords(board):
+def genAllWords(board, flipped):
+    #flipped is a boolean indicating whether the board is transposed or not. This allows annotating the moves correctly
+    
     calculateAnchors(board)
     movelist = []
-    #vmovelist = []
-    #ACROSS
-    for i in range(numrows):
-        row = board[i]
-        movelist= movelist + [(i,genRowWords(rack, row, board_anchorpoints[i], board_anchorconstraints[i]))]
 
-    #TODO: translate move.
-    
-    
+    for i in range(numrows):
+        print(i)
+        row = board[i]
+        rowmoves = genRowWords(rack, row, board_anchorpoints[i], board_anchorconstraints[i])
+        
+        if not flipped:
+            for rawmove in rowmoves:
+                #Got:    col, hashword, letterword, newletters
+                #Needed: row, col, 'H'/'V', hashword, letterword, time(useless))
+                formattedmove = (i+1, rawmove[0], 'H', rawmove[1], rawmove[2], rawmove[3])
+                movelist= movelist + [formattedmove]
+        else:
+            for rawmove in rowmoves:
+                #Got:    row, hashword, letterword, newletters
+                #Needed: row, col, 'H'/'V', hashword, letterword, time(useless))
+                formattedmove = (rawmove[0], i+1, 'V', rawmove[1], rawmove[2], rawmove[3])
+                movelist= movelist + [formattedmove]
     return movelist
 
 showboard(board)
 
-
-hpossiblemoves = genAllWords(board)
+print('***********')
+hpossiblemoves = genAllWords(board, False)
+print('***********')
 flippedboard = map(list, zip(*board))
-vpossiblemoves = genAllWords(flippedboard) #TODO: stuff will be overwritten here! We don't care, but beware!
+print('***********')
+vpossiblemoves = genAllWords(flippedboard, True) #TODO: stuff will be overwritten here! We don't care, but beware!
+print('***********')
 
 
 totalmoves = 0
-#print(hpossiblemoves)
-for i in range(numrows):
-#    print(hpossiblemoves[i])
-    totalmoves+=len(hpossiblemoves[i][1]) + len(vpossiblemoves[i][1])
-    print(i,hpossiblemoves[i][1], vpossiblemoves[i][1])
+
+totalmoves+=len(hpossiblemoves) + len(vpossiblemoves)
     
 print('Total possible moves: ', totalmoves)
-
-    
