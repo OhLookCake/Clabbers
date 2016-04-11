@@ -7,13 +7,15 @@ from collections import Counter
 import pickle
 import json
 import copy
+import itertools
+import time
 
 
 ### READ MESSAGE #####
 
 
 
-
+start_time = time.time()
 
 #### INITIALIZE #####
 random.seed(10)
@@ -38,27 +40,62 @@ bagdict = {L:int(config.get('TileDistribution', L)) for L in string.ascii_upperc
 bag = list(''.join([L*bagdict[L] for L in string.ascii_uppercase+'?']))
 
 dictfile = '../csw12.txt'
+print('read configs', time.time() - start_time)   
 
 ## Read pickled data
-readhashedwordstring = pickle.load(open("../preprocess/hashedwordstring.p", "rb"))
-wordlist = pickle.load(open("../preprocess/fulldictionary.p", "rb"))
-lwordlists = pickle.load(open("../preprocess/lengthwisedictionary.p", "rb"))
+
+#wordlist = pickle.load(open("../preprocess/fulldictionary.p", "rb"))
+#readhashedwordstring = pickle.load(open("../preprocess/hashedwordstring.p", "rb"))
+#lwordlists = pickle.load(open("../preprocess/lengthwisedictionary.p", "rb"))
+#print('pickled', time.time() - start_time)    
 
 ## Initialize constants
 AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 board_anchorpoints = [[False]*15]*15
 board_anchorconstraints = [[AZ]*15]*15
 
+#This is faster than reading a pickled object (!)
+#dictfile = '../csw12.txt'
+#fh = open(dictfile, 'r')
+#wordlist = [w.replace("\n", "") for w in fh.readlines()]
+#fh.close()
+#print('read raw dict', time.time() - start_time)   
+
+##lwordlists    
+fh = open("../preprocess/lwordlists.txt", "r")
+lines = [w.replace("\n", "") for w in fh.readlines()]
+lwordlists = {}
+for line in lines:
+    linelist = line.split(" ")
+    k = int(linelist[0])
+    d = {}
+    for w in linelist[1:]:
+        d[w] = 1
+    lwordlists[k] = d
+print('lwordlists', time.time() - start_time)   
+
+###alphasetdict    
+fh = open("../preprocess/alphasetdict.txt", "r")
+lines = [w.replace("\n", "") for w in fh.readlines()]
+alphasetdict ={}
+for line in lines:
+    l = line.split(" ")
+    k = l[0]
+    alphasetdict[k] = l[1:]
+
+print('dict objects', time.time() - start_time)   
+
 
 #### temp testing
 
 #boardstring = "...............................................................................................................TONE.............................................................................................................."
-boardstring = ".................................................................................................T..............O..............N..............E.................................................................................."
-#boardstring = "."*225
+#boardstring = ".................................................................................................T..............O..............N..............E.................................................................................."
+boardstring = "."*225
 rack = "ABEGMTY"
 board = [list(boardstring)[i:i+numcols] for i in range(0, numrows*numcols,numcols)]
 
 ###/
+
 
 
 def showboard(board):
@@ -160,6 +197,95 @@ def calculateAnchors(board):
     #return (board_anchorpoints, board_anchorconstraints)    
 
 
+def genRowWords2(rack, row, anchorpoints, anchorconstraints):
+    
+    """
+    eg:
+        rack = "RECDNAV"
+        row = ['.','.','.','.','.','.','.','.','.','.','E','.','.','.','.']
+        anchorconstraints = [AZ,AZ,AZ,AZ,AZ,AZ,AZ,'PQS',AZ,'RST',AZ,'P',AZ,AZ,AZ]
+        anchorpoints = [False,False,False,False,False,False,False,False,False,False,False,True,False,False,False]
+    """
+    
+    if sum(anchorpoints) == 0:
+        return []
+#    print(anchorconstraints)   
+    letters = rack + ''.join([x for x in row if x!='.' ]) 
+    foundwordlist = []
+    movelist = []
+        
+    powerset = itertools.chain.from_iterable(itertools.combinations(letters, r) for r in range(2,len(letters)+1))
+    
+    for subset in powerset:
+        key = ''.join(sorted(subset))
+        if key in alphasetdict:
+            words = alphasetdict[key]
+            for fw in words:
+                foundwordlist.append(fw)
+                
+    foundwordlist = list(set(foundwordlist))
+    for fw in foundwordlist:
+        for pos in xrange(numcols - len(fw) + 1):
+            """ To check:
+                1. nothing to the left of start. nothing to the right of end
+                2. all the letters in the row letters position are in the right position
+                3. at least one letter from the rack is used
+                4. at least one anchor point is touching
+                5. all anchor constraints are obeyed
+                Do all this in one iteration over the wordstring
+            """
+            
+            #1.
+            if pos > 0 and row[pos-1]!='.':
+#                print(1,pos)
+                continue
+#            print(pos, fw)
+            if pos + len(fw) < numcols and row[pos + len(fw)]!='.':
+#                print(2,pos)                
+                continue
+            
+            moveokay = True            
+            rackletterused = False
+            touchesanchor = False
+            hashword = fw
+            
+            
+            for i,l in enumerate(fw):
+                boardpos = pos + i
+                
+                #2. 
+                if row[boardpos]!='.' and row[boardpos]!=l:
+                    moveokay = False
+#                    print(3,pos)                    
+                    break
+                
+                #3.
+                if row[boardpos]=='.':
+                    rackletterused = True
+                else:
+                    hashword = hashword[:i] + '#' + hashword[i+1:]
+                
+                #4.
+                if anchorpoints[boardpos]:
+                    touchesanchor = True
+                
+                #5.
+                if row[boardpos] == '.' and l not in anchorconstraints[boardpos]:
+                    moveokay = False
+#                    print(4,pos)
+                    break
+                
+                
+            if not(moveokay and rackletterused and touchesanchor):
+#                print(5,pos)
+                continue
+            
+            movelist.append((pos, hashword, fw, re.sub('#','',hashword)))
+#    print(movelist)
+    return movelist
+    
+                
+
 def genRowWords(rack, row, anchorpoints, anchorconstraints):
     """
     eg:
@@ -168,13 +294,12 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
         anchorconstraints = [AZ,AZ,AZ,AZ,AZ,AZ,AZ,'PQS',AZ,'RST',AZ,'P',AZ,AZ,AZ]
         anchorpoints = [False,False,False,False,False,False,False,False,False,False,False,True,False,False,False]
     """
+    if sum(anchorpoints) ==0:
+        return []
 
     actualrack = rack
     if '?' in rack:
         rack = AZ
-        
-    if sum(anchorpoints) ==0:
-        return []
     
     regstring = ""
     
@@ -253,6 +378,7 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
     return results
 
 def genAllWords(board, flipped):
+
     #flipped is a boolean indicating whether the board is transposed or not. This allows annotating the moves correctly
     numoccupied = sum(x!='.' for row in board for x in row)
     movelist = []
@@ -263,7 +389,7 @@ def genAllWords(board, flipped):
         for i in range(numrows):
             print(i)
             row = board[i]
-            rowmoves = genRowWords(rack, row, board_anchorpoints[i], board_anchorconstraints[i])
+            rowmoves = genRowWords2(rack, row, board_anchorpoints[i], board_anchorconstraints[i])
     
             if not flipped:
                 for rawmove in rowmoves:
@@ -279,17 +405,36 @@ def genAllWords(board, flipped):
                     movelist= movelist + [formattedmove]
     else:
         #First Move of the game. No anchors, etc.
-        for length in xrange(2,8):
-            lwords = lwordlists[length]
-            for w in lwords:
-                if not Counter(w) - Counter(rack):
-                    #w is a subset
-                    wordlist.append(w)
-                    ccol = numcols //2
-                    crow = numrows //2
+        letters = rack
+        foundwordlist = []
+        powerset = itertools.chain.from_iterable(itertools.combinations(letters, r) for r in range(2,len(letters)+1))
+    
+        for subset in powerset:
+            key = ''.join(sorted(subset))
+            if key in alphasetdict:
+                words = alphasetdict[key]
+                for fw in words:
+                    foundwordlist.append(fw)
                     
-                    for i in range((ccol - length + 1), ccol + 1):
-                        movelist.append((crow, i, 'H', w, w, w))
+        foundwordlist = list(set(foundwordlist))
+        ccol = numcols //2
+        crow = numrows //2
+        for w in foundwordlist:
+            for i in range((ccol - len(w) + 1), ccol + 1):
+                movelist.append((crow, i, 'H', w, w, w))
+        
+#        for length in xrange(2,8):
+#            lwords = lwordlists[length]
+#            for w in lwords:
+#                if not Counter(w) - Counter(rack):
+#                    #w is a subset
+#                    foundwordlist.append(w)
+#                    ccol = numcols //2
+#                    crow = numrows //2
+#                    
+#                    for i in range((ccol - length + 1), ccol + 1):
+#                        movelist.append((crow, i, 'H', w, w, w))
+
 
     return movelist
     
@@ -367,12 +512,12 @@ def scoremove(parsedmove):
     return (totalscore, tilesplayed)
 
 
-showboard(board)
+#showboard(board)
 
-print('***********')
+#print('***********')
 hpossiblemoves = genAllWords(board, False)
-print(hpossiblemoves[0:9])
-print('***********')
+#print(hpossiblemoves[0:9])
+#print('***********')
 
 numoccupied = sum(x!='.' for row in board for x in row)
 
@@ -380,8 +525,8 @@ numoccupied = sum(x!='.' for row in board for x in row)
 if numoccupied > 0:
     flippedboard = map(list, zip(*board))
     vpossiblemoves = genAllWords(flippedboard, True) #TODO: stuff will be overwritten here! We don't care, but beware!
-    print(vpossiblemoves[0:9])
-    print('***********')
+#    print(vpossiblemoves[0:9])
+#    print('***********')
 else:
     vpossiblemoves = []
 
@@ -398,4 +543,4 @@ for move in allmoveslist[0:9]:
     print(move)
     
 
-
+print('end', time.time() - start_time)    
