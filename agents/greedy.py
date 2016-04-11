@@ -1,37 +1,64 @@
 from __future__ import print_function
 import ConfigParser
+import string
+import random
+import re
 from collections import Counter
 import pickle
-import re
+import json
+import copy
+
+
+### READ MESSAGE #####
+
+
+
+
+
+#### INITIALIZE #####
+random.seed(10)
+
+#Read config file
+config = ConfigParser.RawConfigParser()
+config.read('greedyconfig.cfg')
+
+numrows = int(config.get('Board', 'numrows'))
+numcols = int(config.get('Board', 'numcols'))
+
+lettermultiplierstring = config.get('Board', 'lettermultiplier').split(',')
+lettermultiplier = [[int(k) for k in lettermultiplierstring[i:i+numcols]] for i in range(0, numrows*numcols,numcols)]
+
+wordmultiplierstring = config.get('Board', 'wordmultiplier').split(',')
+wordmultiplier = [[int(k) for k in wordmultiplierstring[i:i+numcols]] for i in range(0, numrows*numcols,numcols)]
+
+tilepoints = {L:int(config.get('TilePoints', L)) for L in string.ascii_uppercase+'?'}
+tilepoints.update({L:int(config.get('TilePoints', '?')) for L in string.ascii_lowercase}) # basically, also add equivalent of blank points for lower case letters
+
+bagdict = {L:int(config.get('TileDistribution', L)) for L in string.ascii_uppercase+'?'}
+bag = list(''.join([L*bagdict[L] for L in string.ascii_uppercase+'?']))
 
 dictfile = '../csw12.txt'
-numrows = 15
-numcols = 15
 
-fh = open(dictfile, 'r')
-wordlist = [w.replace("\n", "").upper() for w in fh.readlines()]
-lwordlists = {}
-for i in range(2,16):
-    lwordlists[i]=[w for w in wordlist if len(w) == i]
-
-    
-fh.close()
-hashedwordlist = ['#'*14 + w + '#'*14 for w in wordlist]
-#hashedwordstring = ('#'*14) + reduce(lambda x, y: x + ('#'*14) + y, wordlist) + ('#'*14)
+## Read pickled data
 readhashedwordstring = pickle.load(open("../preprocess/hashedwordstring.p", "rb"))
+wordlist = pickle.load(open("../preprocess/fulldictionary.p", "rb"))
+lwordlists = pickle.load(open("../preprocess/lengthwisedictionary.p", "rb"))
 
+## Initialize constants
 AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
 board_anchorpoints = [[False]*15]*15
 board_anchorconstraints = [[AZ]*15]*15
 
-#inputsring = 
 
+#### temp testing
 
-boardstring = "...............................................................................................................TONE.............................................................................................................."
-rack = "COPERTV"
+#boardstring = "...............................................................................................................TONE.............................................................................................................."
+boardstring = ".................................................................................................T..............O..............N..............E.................................................................................."
+#boardstring = "."*225
+rack = "ABEGMTY"
 board = [list(boardstring)[i:i+numcols] for i in range(0, numrows*numcols,numcols)]
-    
+
+###/
 
 
 def showboard(board):
@@ -64,7 +91,7 @@ def strIntersection(str1, str2):
     
 def calculateAnchors(board):
     #TODO: Do this via an update mechanism
-    
+
     global board_anchorpoints# = [[False]*15]*15
     global board_anchorconstraints# = [[AZ]*15]*15
     
@@ -112,19 +139,20 @@ def calculateAnchors(board):
             
             
             hpattern = re.compile(leftstring + '([A-Z])' + rightstring)
-            vpattern = re.compile(upstring + '([A-Z])' + downstring)
+#            vpattern = re.compile(upstring + '([A-Z])' + downstring)
             
             if len(leftstring + rightstring) > 0:
                 hcandidates = ''.join([m.group(1) for m in [hpattern.match(w) for w in lwordlists[len(leftstring + rightstring) + 1]] if m])
             else:
                 hcandidates = AZ
                 
-            if len(upstring + downstring) > 0:
-                vcandidates = ''.join([m.group(1) for m in [vpattern.match(w) for w in lwordlists[len(upstring + downstring) + 1]] if m])
-            else:
-                vcandidates = AZ
+#            if len(upstring + downstring) > 0:
+#                vcandidates = ''.join([m.group(1) for m in [vpattern.match(w) for w in lwordlists[len(upstring + downstring) + 1]] if m])
+#            else:
+#                vcandidates = AZ
             
-            board_anchorconstraints[i][j] = strIntersection(hcandidates, vcandidates)
+#            board_anchorconstraints[i][j] = strIntersection(hcandidates, vcandidates)
+            board_anchorconstraints[i][j] = hcandidates            
             #print(i,j,hcandidates,vcandidates)
             if len(board_anchorconstraints[i][j])>0:
                 board_anchorpoints[i][j] = True
@@ -187,6 +215,7 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
             x+=1
             
         actualword = leftbit + w[start:end+1] + rightbit
+
         
         if not actualword in lwordlists[len(actualword)]: # the effective word is not a word
             rejectioncounter[0]+=1
@@ -214,54 +243,159 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
                 anno_word = anno_word + '(' + actualword[ctr] + ')'
             ctr+=1
         
-        #TODO: Optional:
         hashword = re.sub('\(.\)', '#', anno_word)
         letterword = actualword
-        
         
         results+=[(anno_col,hashword,letterword,''.join(lettersadded))]
 
 #    print(rejectioncounter)       
-    return list(set(results))
+#    return list(set(results))
+    return results
 
 def genAllWords(board, flipped):
     #flipped is a boolean indicating whether the board is transposed or not. This allows annotating the moves correctly
-    
-    calculateAnchors(board)
+    numoccupied = sum(x!='.' for row in board for x in row)
     movelist = []
 
-    for i in range(numrows):
-        print(i)
-        row = board[i]
-        rowmoves = genRowWords(rack, row, board_anchorpoints[i], board_anchorconstraints[i])
-        
-        if not flipped:
-            for rawmove in rowmoves:
-                #Got:    col, hashword, letterword, newletters
-                #Needed: row, col, 'H'/'V', hashword, letterword, time(useless))
-                formattedmove = (i+1, rawmove[0], 'H', rawmove[1], rawmove[2], rawmove[3])
-                movelist= movelist + [formattedmove]
-        else:
-            for rawmove in rowmoves:
-                #Got:    row, hashword, letterword, newletters
-                #Needed: row, col, 'H'/'V', hashword, letterword, time(useless))
-                formattedmove = (rawmove[0], i+1, 'V', rawmove[1], rawmove[2], rawmove[3])
-                movelist= movelist + [formattedmove]
+    if numoccupied > 0:
+        calculateAnchors(board)
+    
+        for i in range(numrows):
+            print(i)
+            row = board[i]
+            rowmoves = genRowWords(rack, row, board_anchorpoints[i], board_anchorconstraints[i])
+    
+            if not flipped:
+                for rawmove in rowmoves:
+                    #Got:    col, hashword, letterword, newletters
+                    #Needed: row, col, 'H'/'V', hashword, letterword, time(useless))
+                    formattedmove = (i, rawmove[0], 'H', rawmove[1], rawmove[2], rawmove[3])
+                    movelist= movelist + [formattedmove]
+            else:
+                for rawmove in rowmoves:
+                    #Got:    row, hashword, letterword, newletters
+                    #Needed: row, col, 'H'/'V', hashword, letterword, time(useless))
+                    formattedmove = (rawmove[0], i, 'V', rawmove[1], rawmove[2], rawmove[3])
+                    movelist= movelist + [formattedmove]
+    else:
+        #First Move of the game. No anchors, etc.
+        for length in xrange(2,8):
+            lwords = lwordlists[length]
+            for w in lwords:
+                if not Counter(w) - Counter(rack):
+                    #w is a subset
+                    wordlist.append(w)
+                    ccol = numcols //2
+                    crow = numrows //2
+                    
+                    for i in range((ccol - length + 1), ccol + 1):
+                        movelist.append((crow, i, 'H', w, w, w))
+
     return movelist
+    
+    
+def scoremove(parsedmove): 
+    letterboard = copy.deepcopy(board)
+    
+    r = parsedmove[0]
+    c = parsedmove[1]
+    dirc = parsedmove[2]
+    parsedword = parsedmove[3]
+    actualword = parsedmove[4]
+    
+    i = 0 
+    totalscore = 0
+    mainwordscore = 0
+    mainwordmultiplier = 1
+
+    for i in range(len(actualword)):
+        if parsedword[i] == '#':
+            mainwordscore+=tilepoints[actualword[i]]
+        else:
+            mainwordscore+=(tilepoints[actualword[i]] * lettermultiplier[r][c])
+            mainwordmultiplier *= wordmultiplier[r][c]
+            
+            hasperpendicularplay = False #if there is one, we'll set this to true later.
+            perpendicularwordscore = (tilepoints[actualword[i]] * lettermultiplier[r][c])
+            perpendicularwordmultiplier = wordmultiplier[r][c]
+
+            #calculate perpendicular word score
+            if dirc == 'H':
+                rtemp = r-1
+                while rtemp >= 0 and letterboard[rtemp][c]!='.':
+                    hasperpendicularplay = True
+                    perpendicularwordscore += tilepoints[letterboard[rtemp][c]]
+                    rtemp-=1
+                rtemp = r+1                
+                
+                while rtemp < numrows and letterboard[rtemp][c]!='.':
+                    hasperpendicularplay = True
+                    perpendicularwordscore += tilepoints[letterboard[rtemp][c]]
+                    rtemp+=1
+                
+            else:
+                ctemp = c-1
+                while ctemp >= 0 and letterboard[r][ctemp]!='.':
+                    hasperpendicularplay = True
+                    perpendicularwordscore += tilepoints[letterboard[r][ctemp]]
+                    ctemp-=1
+                ctemp = c+1                
+                while ctemp < numcols and letterboard[r][ctemp]!='.':
+                    hasperpendicularplay = True
+                    perpendicularwordscore += tilepoints[letterboard[r][ctemp]]
+                    ctemp+=1
+            
+            perpendicularwordscore *= perpendicularwordmultiplier
+            if hasperpendicularplay:
+                totalscore += perpendicularwordscore
+        
+        letterboard[r][c] = actualword[i] #BOARD UPDATED HERE                    
+        if dirc == 'H':
+            c+=1
+        elif dirc =='V':
+            r+=1
+
+    
+    totalscore+=(mainwordscore*mainwordmultiplier)
+    
+    
+    tilesplayed = [p for p in parsedword if not p=='#']
+    ntilesplayed = len(tilesplayed)
+    if ntilesplayed == 7:
+        totalscore+=50
+
+    return (totalscore, tilesplayed)
+
 
 showboard(board)
 
 print('***********')
 hpossiblemoves = genAllWords(board, False)
-print('***********')
-flippedboard = map(list, zip(*board))
-print('***********')
-vpossiblemoves = genAllWords(flippedboard, True) #TODO: stuff will be overwritten here! We don't care, but beware!
+print(hpossiblemoves[0:9])
 print('***********')
 
+numoccupied = sum(x!='.' for row in board for x in row)
 
-totalmoves = 0
+#If it is the first move of the game, the symmetry makes it necessary to consider only one direction
+if numoccupied > 0:
+    flippedboard = map(list, zip(*board))
+    vpossiblemoves = genAllWords(flippedboard, True) #TODO: stuff will be overwritten here! We don't care, but beware!
+    print(vpossiblemoves[0:9])
+    print('***********')
+else:
+    vpossiblemoves = []
 
-totalmoves+=len(hpossiblemoves) + len(vpossiblemoves)
+allmoveslist = hpossiblemoves + vpossiblemoves
+print('Total number of possible moves: ', len(allmoveslist))
+
+
+for i,move in enumerate(allmoveslist):
+    allmoveslist[i]+=(scoremove(move)[0],)
     
-print('Total possible moves: ', totalmoves)
+allmoveslist.sort(key=lambda tup: tup[6], reverse=True)     
+print("Printing highest scoring 10:")
+for move in allmoveslist[0:9]:
+    print(move)
+    
+
+
