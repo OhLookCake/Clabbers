@@ -4,21 +4,29 @@ import string
 import random
 import re
 from collections import Counter
-import pickle
+#import pickle
 import json
 import copy
 import itertools
 import time
-
+import sys
 
 ### READ MESSAGE #####
 
-
-
 start_time = time.time()
 
+"""
+expecting argv to be of length 2. The argument (argv[1]) is the json in the expected format - enclosed in quotes.
+So that python interprets it as one long string
+"""
+
+message = json.loads(sys.argv[1])
+
+if message['status']['moverequired'] == False:
+    sys.exit() #TODO: Does this halt the calling process also?!
+    
+
 #### INITIALIZE #####
-random.seed(10)
 
 #Read config file
 config = ConfigParser.RawConfigParser()
@@ -39,27 +47,22 @@ tilepoints.update({L:int(config.get('TilePoints', '?')) for L in string.ascii_lo
 bagdict = {L:int(config.get('TileDistribution', L)) for L in string.ascii_uppercase+'?'}
 bag = list(''.join([L*bagdict[L] for L in string.ascii_uppercase+'?']))
 
-dictfile = '../csw12.txt'
-print('read configs', time.time() - start_time)   
 
-## Read pickled data
+## PARSE MESSAGE
 
-#wordlist = pickle.load(open("../preprocess/fulldictionary.p", "rb"))
-#readhashedwordstring = pickle.load(open("../preprocess/hashedwordstring.p", "rb"))
-#lwordlists = pickle.load(open("../preprocess/lengthwisedictionary.p", "rb"))
-#print('pickled', time.time() - start_time)    
+boardstring = message["board"]
+rack = ''.join(message["rack"])
+numblanks = sum(1 for x in rack if x=='?')
+
 
 ## Initialize constants
 AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 board_anchorpoints = [[False]*15]*15
 board_anchorconstraints = [[AZ]*15]*15
 
+## Read optimized text files
 #This is faster than reading a pickled object (!)
-#dictfile = '../csw12.txt'
-#fh = open(dictfile, 'r')
-#wordlist = [w.replace("\n", "") for w in fh.readlines()]
-#fh.close()
-#print('read raw dict', time.time() - start_time)   
+
 
 ##lwordlists    
 fh = open("../preprocess/lwordlists.txt", "r")
@@ -72,29 +75,47 @@ for line in lines:
     for w in linelist[1:]:
         d[w] = 1
     lwordlists[k] = d
-print('lwordlists', time.time() - start_time)   
+#print('lwordlists', time.time() - start_time)   
 
 ###alphasetdict    
-fh = open("../preprocess/alphasetdict.txt", "r")
-lines = [w.replace("\n", "") for w in fh.readlines()]
-alphasetdict ={}
-for line in lines:
-    l = line.split(" ")
-    k = l[0]
-    alphasetdict[k] = l[1:]
+if numblanks == 0:
+    fh = open("../preprocess/alphasetdict.txt", "r")
+    lines = [w.replace("\n", "") for w in fh.readlines()]
+    alphasetdict ={}
+    for line in lines:
+        l = line.split(" ")
+        k = l[0]
+        alphasetdict[k] = l[1:]
+elif numblanks == 1:
+    fh = open("../preprocess/alphasetdict1B.txt", "r")
+    lines = [w.replace("\n", "") for w in fh.readlines()]
+    alphasetdict ={}
+    for line in lines:
+        l = line.split(" ")
+        k = l[0]
+        alphasetdict[k] = l[1:]
+else:
+    #2 blanks
+    fh = open("../preprocess/alphasetdict2B.txt", "r")
+    lines = [w.replace("\n", "") for w in fh.readlines()]
+    alphasetdict ={}
+    for line in lines:
+        l = line.split(" ")
+        k = l[0]
+        alphasetdict[k] = l[1:]
 
-print('dict objects', time.time() - start_time)   
+#print('dict objects', time.time() - start_time)   
 
 
 #### temp testing
 
 #boardstring = "...............................................................................................................TONE.............................................................................................................."
 #boardstring = ".................................................................................................T..............O..............N..............E.................................................................................."
-boardstring = "."*225
-rack = "ABEGMTY"
-board = [list(boardstring)[i:i+numcols] for i in range(0, numrows*numcols,numcols)]
-
+#boardstring = "."*225
+#rack = "ABEGMTY"
 ###/
+
+board = [list(boardstring)[i:i+numcols] for i in range(0, numrows*numcols,numcols)]
 
 
 
@@ -198,7 +219,7 @@ def calculateAnchors(board):
 
 
 def genRowWords2(rack, row, anchorpoints, anchorconstraints):
-    
+
     """
     eg:
         rack = "RECDNAV"
@@ -210,7 +231,7 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
     if sum(anchorpoints) == 0:
         return []
 #    print(anchorconstraints)   
-    letters = rack + ''.join([x for x in row if x!='.' ]) 
+    letters = re.sub('\?', '', rack) + ''.join([x for x in row if x!='.' ]) 
     foundwordlist = []
     movelist = []
         
@@ -280,7 +301,17 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
 #                print(5,pos)
                 continue
             
-            movelist.append((pos, hashword, fw, re.sub('#','',hashword)))
+            blankedletter = ''.join(list(Counter(re.sub('#','',hashword)) - Counter(re.sub('\?', '', rack))))  # assumes at most 1 blank
+            
+            if len(blankedletter) > 0:
+                #blank included
+                for i,l in enumerate(hashword):
+                    if l == blankedletter:
+                        temphashword = hashword[:i] + l.lower() + hashword[i+1:]
+                        movelist.append((pos, temphashword, fw[:i] + l.lower() + fw[i+1:], re.sub('#','', temphashword)))
+            else:
+                movelist.append((pos, hashword, fw, re.sub('#','',hashword)))
+                            
 #    print(movelist)
     return movelist
     
@@ -370,7 +401,7 @@ def genRowWords(rack, row, anchorpoints, anchorconstraints):
         
         hashword = re.sub('\(.\)', '#', anno_word)
         letterword = actualword
-        
+
         results+=[(anno_col,hashword,letterword,''.join(lettersadded))]
 
 #    print(rejectioncounter)       
@@ -387,7 +418,7 @@ def genAllWords(board, flipped):
         calculateAnchors(board)
     
         for i in range(numrows):
-            print(i)
+            #print(i) #row/col number
             row = board[i]
             rowmoves = genRowWords2(rack, row, board_anchorpoints[i], board_anchorconstraints[i])
     
@@ -420,22 +451,19 @@ def genAllWords(board, flipped):
         ccol = numcols //2
         crow = numrows //2
         for w in foundwordlist:
-            for i in range((ccol - len(w) + 1), ccol + 1):
-                movelist.append((crow, i, 'H', w, w, w))
+            blankedletter = ''.join(list(Counter(w) - Counter(letters))) # assumes at most 1 blank. Also. if word can be made without blank. we'll ALWAYS prefer to make it that way.
+
+            if len(blankedletter) > 0:
+                #blank included
+                for i,l in enumerate(w):
+                    if l == blankedletter:
+                        tempw = w[:i] + l.lower() + w[i+1:]
+                        for i in range((ccol - len(w) + 1), ccol + 1):
+                            movelist.append((crow, i, 'H', tempw, tempw, tempw))
+            else:
+                for i in range((ccol - len(w) + 1), ccol + 1):
+                    movelist.append((crow, i, 'H', w, w, w))
         
-#        for length in xrange(2,8):
-#            lwords = lwordlists[length]
-#            for w in lwords:
-#                if not Counter(w) - Counter(rack):
-#                    #w is a subset
-#                    foundwordlist.append(w)
-#                    ccol = numcols //2
-#                    crow = numrows //2
-#                    
-#                    for i in range((ccol - length + 1), ccol + 1):
-#                        movelist.append((crow, i, 'H', w, w, w))
-
-
     return movelist
     
     
@@ -531,16 +559,25 @@ else:
     vpossiblemoves = []
 
 allmoveslist = hpossiblemoves + vpossiblemoves
-print('Total number of possible moves: ', len(allmoveslist))
+#print('Total number of possible moves: ', len(allmoveslist))
 
 
 for i,move in enumerate(allmoveslist):
     allmoveslist[i]+=(scoremove(move)[0],)
     
 allmoveslist.sort(key=lambda tup: tup[6], reverse=True)     
-print("Printing highest scoring 10:")
-for move in allmoveslist[0:9]:
-    print(move)
-    
+#for move in allmoveslist[0:10]:
+#    print(move)
 
-print('end', time.time() - start_time)    
+#print('end', time.time() - start_time)    
+fullmove = allmoveslist[0]
+row = str(fullmove[0] + 1)
+col = AZ[fullmove[1]]
+
+gcgmove = ""
+if fullmove[2] == 'H':
+    gcgmove = row + col + " " + fullmove[3]
+else:
+    gcgmove = col + row + " " + fullmove[3]
+
+print(gcgmove)
