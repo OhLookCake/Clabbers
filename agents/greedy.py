@@ -54,7 +54,6 @@ boardstring = message["board"]
 rack = ''.join(message["rack"])
 numblanks = sum(1 for x in rack if x=='?')
 
-
 ## Initialize constants
 AZ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 board_anchorpoints = [[False]*15]*15
@@ -229,7 +228,9 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
     
     if sum(anchorpoints) == 0:
         return []
-#    print(anchorconstraints)   
+#    print(anchorconstraints)  
+
+    blankspresent = rack != re.sub('\?', '', rack)
     letters = re.sub('\?', '', rack) + ''.join([x for x in row if x!='.' ]) 
     foundwordlist = []
     movelist = []
@@ -254,6 +255,7 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
                 5. all anchor constraints are obeyed
                 Do all this in one iteration over the wordstring
             """
+            racklettersused =""
             
             #1.
             if pos > 0 and row[pos-1]!='.':
@@ -265,7 +267,7 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
                 continue
             
             moveokay = True            
-            rackletterused = False
+            atleastonerackletterused = False
             touchesanchor = False
             hashword = fw
             
@@ -281,7 +283,7 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
                 
                 #3.
                 if row[boardpos]=='.':
-                    rackletterused = True
+                    atleastonerackletterused = True
                 else:
                     hashword = hashword[:i] + '#' + hashword[i+1:]
                 
@@ -296,11 +298,14 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
                     break
                 
                 
-            if not(moveokay and rackletterused and touchesanchor):
+            if not(moveokay and atleastonerackletterused and touchesanchor):
 #                print(5,pos)
                 continue
             
             blankedletter = ''.join(list(Counter(re.sub('#','',hashword)) - Counter(re.sub('\?', '', rack))))  # assumes at most 1 blank
+            
+            if (not blankspresent) and (len(blankedletter) > 0):
+                continue
             
             if len(blankedletter) > 0:
                 #blank included
@@ -539,7 +544,7 @@ def scoremove(parsedmove):
     return (totalscore, tilesplayed)
 
 
-#showboard(board)
+showboard(board)
 
 #print('***********')
 hpossiblemoves = genAllWords(board, False)
@@ -579,4 +584,4 @@ if fullmove[2] == 'H':
 else:
     gcgmove = col + row + " " + fullmove[3]
 
-print(gcgmove + ' ' + str(fullmove[6]))
+print(gcgmove)# + ' ' + str(fullmove[6]))
