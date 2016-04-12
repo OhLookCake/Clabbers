@@ -118,7 +118,6 @@ else:
 board = [list(boardstring)[i:i+numcols] for i in range(0, numrows*numcols,numcols)]
 
 
-
 def showboard(board):
     #board is a numrows*numcols list    
     
