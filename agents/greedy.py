@@ -579,4 +579,4 @@ if fullmove[2] == 'H':
 else:
     gcgmove = col + row + " " + fullmove[3]
 
-print(gcgmove)
+print(gcgmove + ' ' + str(fullmove[6]))

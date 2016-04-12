@@ -4,6 +4,7 @@ import re
 import csv
 import gcgreader
 import commands
+import json
 
 """
 for fullgcg in list of gcg files:
@@ -53,7 +54,7 @@ Calculate fraction where these two variables (individually) take value 1 (true)
 
 #fh = open("MoveTestingResults.csv", "w")
 gcglist = os.listdir('gcgfiles')
-gcglist = gcglist[:2]
+gcglist = gcglist[:100]
 
 
 for filename in gcglist:
@@ -87,21 +88,39 @@ for filename in gcglist:
         #bag = 'AAAAAAAAABBCCDDDDEEEEEEEEEEEEFFGGGHHIIIIIIIIIJKLLLLMMNNNNNNOOOOOOOOPPQRRRRRRSSSSTTTTTTUUUUVVWWXYYZ'
         #edit gcgreader to also return bag
         message, numtilesinbag = gcgreader.preparemessage(truncatedgcg, rack)
-                
+	message = re.sub('\'','\"',message)
+	jsonmessage = json.loads(message)
+
         if numtilesinbag > 14 and len(rack) < 7:
             continue
         
-        gameid = filename
+        fh = open('temp.gcg', 'w')
+	for item in truncatedgcg:
+		fh.write("%s\n" % item)
+	fh.close()
+	gameid = filename
         movenumber = truncpoint - 1
         blankinrack = '?' in rack
         
-        quacklemove, quacklescore = [0,0]#>>> call test.
-        cmd = "python greedy.py '"+ re.sub('\'', '\"', message) + "'"
+	quacklecommand = "python extension.py /home/shaurya/develop/Clabbers1/agents/temp.gcg "+ "".join(jsonmessage["rack"])
+	print(quacklecommand)
+	quackleoutput = commands.getoutput(quacklecommand)
+	
+	quackleoutput = re.sub('-','- ',quackleoutput)
+	quackleoutput = quackleoutput.split(' ')
+	quackleloc = quackleoutput[0]
+	quackleword = quackleoutput[1]
+        quacklescore = quackleoutput[2]
+        
+
+	cmd = "python greedy.py '"+ re.sub('\'', '\"', message) + "'"
         print(cmd)
-        #greedyoutput = commands.getoutput(cmd)
-        greedyoutput = os.system(cmd)
-        print(greedyoutput)
-        greedymove, greedyscore = [0,0] #>>> call greedy.py
+        greedyoutput = commands.getoutput(cmd)
+        #greedyoutput = os.system(cmd)
+	greedyoutput = greedyoutput.split(' ')
+	greedyloc = greedyoutput[0]
+	greedyword = greedyoutput[1]
+        greedyscore = greedyoutput[2]
         
         datatuple = [gameid,
                      movenumber,
@@ -110,9 +129,11 @@ for filename in gcglist:
                      gcgloc,
                      gcgword,
                      gcgscore,
-                     quacklemove,
+                     quackleloc,
+                     quackleword,
                      quacklescore,
-                     greedymove,
+                     greedyloc,
+                     greedyword,
                      greedyscore]
         
         with open('MoveTestingResults.csv', 'ab') as csvfile:
