@@ -546,7 +546,7 @@ def scoremove(parsedmove):
     return (totalscore, tilesplayed)
 
 
-showboard(board)
+#showboard(board)
 
 #print('***********')
 hpossiblemoves = genAllWords(board, False)
@@ -576,14 +576,17 @@ allmoveslist.sort(key=lambda tup: tup[6], reverse=True)
 #    print(move)
 
 #print('end', time.time() - start_time)    
-fullmove = allmoveslist[0]
-row = str(fullmove[0] + 1)
-col = AZ[fullmove[1]]
-
-gcgmove = ""
-if fullmove[2] == 'H':
-    gcgmove = row + col + " " + fullmove[3]
+if len(allmoveslist) > 0:
+	fullmove = allmoveslist[0]
+	row = str(fullmove[0] + 1)
+	col = AZ[fullmove[1]]
+	
+	gcgmove = ""
+	if fullmove[2] == 'H':
+	    gcgmove = row + col + " " + fullmove[3]
+	else:
+	    gcgmove = col + row + " " + fullmove[3]
 else:
-    gcgmove = col + row + " " + fullmove[3]
-
+	gcgmove = "pass"
+	
 print(gcgmove)# + ' ' + str(fullmove[6]))
