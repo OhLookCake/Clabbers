@@ -230,10 +230,11 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
         return []
 #    print(anchorconstraints)  
 
-    blankspresent = rack != re.sub('\?', '', rack)
+    blankspresent = len(rack) - len(re.sub('\?', '', rack))
     letters = re.sub('\?', '', rack) + ''.join([x for x in row if x!='.' ]) 
     foundwordlist = []
     movelist = []
+    
         
     powerset = itertools.chain.from_iterable(itertools.combinations(letters, r) for r in range(2,len(letters)+1))
     
@@ -302,9 +303,10 @@ def genRowWords2(rack, row, anchorpoints, anchorconstraints):
 #                print(5,pos)
                 continue
             
-            blankedletter = ''.join(list(Counter(re.sub('#','',hashword)) - Counter(re.sub('\?', '', rack))))  # assumes at most 1 blank
+            blankedcounterdict = dict(Counter(re.sub('#','',hashword)) - Counter(re.sub('\?', '', rack)))
+            blankedletter = ''.join(x*blankedcounterdict[x] for x in blankedcounterdict)  # assumes at most 1 blank
             
-            if (not blankspresent) and (len(blankedletter) > 0):
+            if blankspresent < len(blankedletter):
                 continue
             
             if len(blankedletter) > 0:
